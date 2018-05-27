@@ -27,9 +27,10 @@ class Reader:
     def get_members(self) -> list:
         return self.get_field_names()[1:]
 
-    def get_member_pairs(self):
+    def get_member_pairs(self, center_members):
         members = self.get_members()
-        return list(set([tuple(sorted([x, y])) for x in members for y in members if x != y]))
+        return list(set([tuple(sorted([x, y])) for x in members for y in members
+                         if x != y and (not center_members or x in center_members or y in center_members)]))
 
     def get_distance(self, p1: str, p2: str, metric=None):
 
@@ -45,14 +46,19 @@ class Reader:
         self.f.close()
 
 
-def main():
+def write_distance_csv(center_members=None):
+
+    output_file = 'vote_distance{}.csv'.format(
+        '_'.join([''] + center_members if center_members else list())
+    )
     reader = Reader(FILE_NAME)
 
-    member_pairs = reader.get_member_pairs()
+    member_pairs = reader.get_member_pairs(center_members)
     pairs_to_dist = ((t, reader.get_distance(t[0], t[1])) for t in member_pairs)
-    sorted_pairs_to_dist = sorted([x for x in pairs_to_dist if str(x[1]) != 'nan'], key=lambda x: x[1])
+    sorted_pairs_to_dist = sorted([x for x in pairs_to_dist if str(x[1]) != 'nan'],
+                                  key=lambda x: x[1])
 
-    with open('vote_distance.csv', 'w', encoding='utf-8') as f:
+    with open(output_file, 'w', encoding='utf-8') as f:
         for pair, dist in sorted_pairs_to_dist:
             f.write(','.join(list(pair) + [str(dist), '\n']))
         f.close()
@@ -60,4 +66,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    write_distance_csv()
