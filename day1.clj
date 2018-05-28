@@ -1,7 +1,7 @@
 ;; gorilla-repl.fileformat = 1
 
 ;; **
-;;; ## asdf
+;;; ## Explore
 ;; **
 
 ;; @@
@@ -9,7 +9,8 @@
 (ns+ pro1
   (:like anglican-user.worksheet)
   (:require [clojure-csv.core :as csv]
-            [clojure.java.io :as io]))
+            [clojure.java.io :as io]
+            [clojure.string :as string]))
 ;; @@
 ;; =>
 ;;; {"type":"list-like","open":"","close":"","separator":"</pre><pre>","items":[{"type":"html","content":"<span class='clj-nil'>nil</span>","value":"nil"},{"type":"html","content":"<span class='clj-nil'>nil</span>","value":"nil"}],"value":"[nil,nil]"}
@@ -89,24 +90,16 @@
 ;; <=
 
 ;; @@
-(index-of "유승민" members)
-(index-of "박주선" members)
-;; @@
-;; =>
-;;; {"type":"list-like","open":"","close":"","separator":"</pre><pre>","items":[{"type":"html","content":"<span class='clj-unkown'>172</span>","value":"172"},{"type":"html","content":"<span class='clj-unkown'>113</span>","value":"113"}],"value":"[172,113]"}
-;; <=
-
-;; @@
+; (key, idx): (pro, abs) -> 0.4, (cons, abs) -> 0.6 같은 식으로 주는 것도 의미가 있지 않을까?
+; cosine similarity 를 먼저 구해서, 그 similarity가 낮은 의원들 위주로 plot을 해 보면 더 빨리 찾을 수 있을지도 모른다.
 (defn test [idx]
   (let [ob   (map encode-row (filter
-                    (fn [row] (not (or (= (nth row key-idx) "abs") (= (nth row idx) "abs")) ) )
+                    (fn [row] (not (or (= (nth row key-idx) "abs") (= (nth row idx) "abs"))))
                     (map rest (rest vote_result))))
         enc  (map (fn [y] (map (fn [x] (if x 0.9 0.01)) y)) ob) ; 이 값을 어떻게 주느냐에 따른 차이가 꽤 큰데..
-        ; (key, idx): (pro, abs) -> 0.4, (cons, abs) -> 0.6 같은 식으로 주는 것도 의미가 있지 않을까?
-        ; cosine similarity 를 먼저 구해서, 그 similarity가 낮은 의원들 위주로 plot을 해 보면 더 빨리 찾을 수 있을지도 모른다.
         lazy (doquery :ipmcmc single [(map (fn [x] (nth x idx)) enc)])
-        samp (map :result (take-nth 10 (take 5000 (drop 5000 lazy))))]
-   (print (count enc))
+        samp (map :result (take-nth 10 (take 10000 (drop 5000 lazy))))]
+   (print (nth members key-idx) " " (nth members idx) ": " (count enc) "\n")
    (plot/histogram samp :normalize :probability :bins 90)))
 ;; @@
 ;; =>
@@ -124,34 +117,253 @@
 ;; <=
 
 ;; **
-;;; #### 각 의원에 대한 Observe를 parameter를 뽑지 않는 방식으로 만들 경우
+;;; ### Cosine Distance
+;;; 
+;;; Averaged over bills
 ;; **
 
 ;; @@
-(defquery joint [obs]
- (let []
-  (map f [(i a) (i b) (i obs)] (range ))
-  x))
-;; @@
+(defn encode-row3 [vr-row]
+  (map (fn [x] (if (= "pro"     x) 1                   ; pro:   +1
+                 (if (= "con"   x) -1                  ; con:   -1
+                   (if (= "wdr" x) -0.5 0)))) vr-row)) ; wdr: -0.5, abs: ±0
 
+(defn encode-col-by [vr-rows key-idx idx]
+  (let [rows  (map encode-row3 vr-rows)
+        col1  (map (fn [row] (nth row key-idx)) rows)  ; key
+        col2  (map (fn [row] (nth row idx)) rows)] ; non-key
+   (list col1 col2)))
+
+(defn get-observations [key-idx idx]
+	(encode-col-by (filter
+                     (fn [row] (not (or (= (nth row key-idx) "abs") (= (nth row idx) "abs"))))
+                       (map rest (rest vote_result))) key-idx idx))
+(defn get-observations-with-abs [key-idx idx]
+	(encode-col-by (map rest (rest vote_result)) key-idx idx))
 ;; @@
-(let [lazy (doquery :ipmcmc joint [])
-      samp (map :result (take 1000 lazy))]
- (print (first samp))
-)
-;; @@
-;; ->
-;;; (1.8154203834229097E-6 4.28342731031623E-5 9.174099941888763E-5 7.288960717289871E-5 1.0647450146740438E-4 7.522080551127979E-5 1.5004908001932501E-4 2.3768443820024196E-4 1.9424528248089272E-4 2.274387667327072E-4 2.6205841236986413E-4 2.6608438950454524E-4 3.419061802239378E-4 2.3850483132948453E-4 3.0038432829503667E-4 2.7755122159621844E-4 3.6653144244848515E-4 1.8011675713008494E-4 2.442321796788647E-4 5.306145049987095E-4 4.113003185499699E-4 5.415768152674355E-4 5.550058614851904E-4 4.867983292520068E-4 4.805238540147696E-4 8.688670433195935E-4 7.462981066272425E-4 5.008832332712533E-4 6.298582156604584E-4 8.82268931738737E-4 6.732193214390023E-4 7.496181092606236E-4 7.789103313540857E-4 7.238745465199759E-4 6.935389462273935E-4 9.626532947893196E-4 8.381597155797775E-4 9.174714870633986E-4 8.098426824319689E-4 8.218491033883342E-4 8.643877544742645E-4 0.001079554140540002 9.52599600950228E-4 0.0010575806842262024 9.210481487632006E-4 8.804410747544046E-4 9.040539853541546E-4 9.809746305174478E-4 0.0010053500796258612 0.0011728810741802613 9.697022946405264E-4 0.0012730121927366006 9.194629585783797E-4 0.0012230482721910774 9.582342458018377E-4 0.001244273941008571 0.0016305070173940506 9.427924526801848E-4 0.0011870522642933104 0.0014614497138129938 0.0014315624187985472 0.0012432042252318366 0.0014270711102149166 0.001356805956572431 0.0014008109783165586 0.0012794425182969026 0.0016534083769967536 0.0015127671120776828 0.0016346637213726335 0.0014829836284982073 0.0012414035340613807 0.001498324894423598 0.0016664097368434246 0.00163911625890371 0.0020256244747444883 0.0016598234905371928 0.00169213542224447 0.0015977525870135365 0.00175022420301637 0.001810162338254247 0.0018121027176339452 0.0019651526371124153 0.001970035080403199 0.001967241414732316 0.0015840471779269112 0.0016311536951707994 0.0018350476749301285 0.0018544971559493174 0.0018722558376219143 0.0021027045380695385 0.001702023593476395 0.0019948245005604252 0.002201345160808238 0.0018715524430999637 0.002196337429945997 0.002333646312275843 0.002172490646074375 0.002062434160116517 0.001975485531556188 0.0017878795230801031 0.002702887562491047 0.002198414175818842 0.001983957680631865 0.0020975704913045426 0.0024637427860835473 0.002262841117737242 0.0021807102786608017 0.0028164253111616537 0.002442744008151676 0.002622923935468579 0.0023613102137764737 0.0025986521715209085 0.002507939969987677 0.0024993273203268275 0.002967234465969502 0.0025691431764519957 0.002745445233640491 0.002599988297404692 0.0023943225966091227 0.003254185414649966 0.00283634060064459 0.0027090871072004913 0.00303130512445064 0.0023984984974642406 0.003147658703457024 0.002722670188652351 0.0023671528164433187 0.0028577082100966094 0.0026965919117550342 0.0026042129295555305 0.002916122279902369 0.002928817026411325 0.002585645783144797 0.0028573525210853867 0.003129796190287856 0.0028817121724515025 0.003024364670102735 0.0030566244426477518 0.0029506639242145444 0.00274872109500504 0.00315741291001105 0.0035135900443565666 0.0034224918450114013 0.0034122388993993113 0.0032728336733893835 0.0032234493326215993 0.0031880377101711575 0.003598765391559751 0.003739368103014767 0.003379611917581027 0.003736855221836833 0.003047136091007757 0.0029645705841042083 0.0033893738378194434 0.003118003649147985 0.003487557799531642 0.0038053469182415165 0.0036260645763056855 0.0035963328883578598 0.003806311760636031 0.0033357764210007594 0.00335053661823033 0.0035534603331166797 0.003958516999258687 0.0037889808941081672 0.0035655992249646663 0.003705587453072909 0.0036388300168673565 0.0033638782214512 0.003709984794668855 0.003881283831731914 0.003976055587198821 0.003776412453497586 0.003909683657566447 0.0042788379775869296 0.0034653552303023647 0.0035526169268711764 0.004022078061449116 0.003900094165902446 0.0032784430511458734 0.003934802889918005 0.004115941304683794 0.0038535696816856565 0.00418277344358475 0.003933786904949823 0.004309358616495841 0.004259041133359842 0.00364888168909459 0.004268883243395803 0.00471801748117725 0.004298879558021553 0.004611847781988273 0.004352739386938246 0.0038690768630839025 0.004353308832621541 0.004418222609234247 0.004362807392745837 0.0043588246645920375 0.0042895123213634425 0.004219234741506284 0.0052163573342604895 0.0044799900739417 0.004401369640242432 0.004890399761361313 0.004040645923385972 0.004189661116483594 0.004284945067786452 0.004426011366941674 0.004130107801356603 0.005211242963167758 0.00478164272360923 0.004474470886044338 0.004962264814182603 0.004451300377191947 0.005163330156744453 0.00469466669441128 0.0046778421678896984 0.004450052537834097 0.00483655375759409 0.004693740065702572 0.004409705991502661 0.0053871997759019 0.004795056842924222 0.005405345484053131 0.005287158365625165 0.005135997212930318 0.004728008228686939 0.004754145590937299 0.004849027817321346 0.005258104351644496 0.005258078422342606 0.005429118224859983 0.005405353360901535 0.004931354979229139 0.004965425575874362 0.0047257368914461135 0.004937155676640603 0.004998263970889269 0.005404042243526753 0.005623835803477399 0.005255236676279977 0.005625759936446105 0.005675748875040662 0.005985145452763673 0.00535390531335108 0.005096814975495637 0.005280530725040016 0.005682715657903809 0.005273085757932322 0.00578548205557352 0.004922704595151127 0.005666485928171689 0.005861369036351185 0.006082911484630016 0.005538964171127691 0.005781783830095083 0.00577976411417353 0.005503272877636206 0.005993924013228076 0.0057659776566685046 0.005932770635801399 0.006162827096331859 0.0059788794222517755 0.005463153228697845 0.005930268397441467 0.005432316919497618 0.006422915122312566 0.005702674532256086 0.005897296509152575 0.006951426714498069 0.005868690531112725 0.0068069388467152546 0.0060659674423903555 0.006135847828649719 0.006537944792955654 0.006343400229911557 0.005895766944183071 0.005872667204129122 0.005495335652845327 0.00653909320483847 0.00635808881790385 0.006418928554776025 0.006445168326686041 0.0061668139074604975 0.006603710170463098 0.006793870078221382 0.0060341373236135615 0.006179851787812398 0.0068260321912395686 0.005909371476366029 0.006493831648427793 0.006282216723597267 0.007178941583319759 0.006409799531551971 0.007059320092491784 0.006091991469156655 0.0060888822049079356 0.0067835991995310605 0.006489623914562099 0.0065104021378799065)
-;; <-
 ;; =>
-;;; {"type":"html","content":"<span class='clj-nil'>nil</span>","value":"nil"}
+;;; {"type":"list-like","open":"","close":"","separator":"</pre><pre>","items":[{"type":"list-like","open":"","close":"","separator":"</pre><pre>","items":[{"type":"list-like","open":"","close":"","separator":"</pre><pre>","items":[{"type":"html","content":"<span class='clj-var'>#&#x27;pro1/encode-row3</span>","value":"#'pro1/encode-row3"},{"type":"html","content":"<span class='clj-var'>#&#x27;pro1/encode-col-by</span>","value":"#'pro1/encode-col-by"}],"value":"[#'pro1/encode-row3,#'pro1/encode-col-by]"},{"type":"html","content":"<span class='clj-var'>#&#x27;pro1/get-observations</span>","value":"#'pro1/get-observations"}],"value":"[[#'pro1/encode-row3,#'pro1/encode-col-by],#'pro1/get-observations]"},{"type":"html","content":"<span class='clj-var'>#&#x27;pro1/get-observations-with-abs</span>","value":"#'pro1/get-observations-with-abs"}],"value":"[[[#'pro1/encode-row3,#'pro1/encode-col-by],#'pro1/get-observations],#'pro1/get-observations-with-abs]"}
 ;; <=
 
 ;; @@
-
+(defn cosine-dist [x y]
+  (let [norm (fn [x] (Math/sqrt (reduce + (map (fn [x] (* x x)) x))))
+        nx   (norm x)
+        ny   (norm y)
+        dot  (reduce + (map (fn [x] (* (first x) (second x))) (map vector x y)))]
+   (/ (/ dot nx) ny)))
 ;; @@
 ;; =>
-;;; {"type":"list-like","open":"<span class='clj-vector'>[</span>","close":"<span class='clj-vector'>]</span>","separator":" ","items":[{"type":"html","content":"<span class='clj-long'>1</span>","value":"1"},{"type":"html","content":"<span class='clj-long'>2</span>","value":"2"},{"type":"html","content":"<span class='clj-long'>3</span>","value":"3"},{"type":"html","content":"<span class='clj-long'>4</span>","value":"4"},{"type":"html","content":"<span class='clj-long'>5</span>","value":"5"},{"type":"html","content":"<span class='clj-long'>6</span>","value":"6"},{"type":"html","content":"<span class='clj-long'>7</span>","value":"7"},{"type":"html","content":"<span class='clj-long'>8</span>","value":"8"},{"type":"html","content":"<span class='clj-long'>9</span>","value":"9"},{"type":"html","content":"<span class='clj-long'>10</span>","value":"10"},{"type":"html","content":"<span class='clj-long'>11</span>","value":"11"},{"type":"html","content":"<span class='clj-long'>12</span>","value":"12"},{"type":"html","content":"<span class='clj-long'>13</span>","value":"13"},{"type":"html","content":"<span class='clj-long'>14</span>","value":"14"},{"type":"html","content":"<span class='clj-long'>15</span>","value":"15"},{"type":"html","content":"<span class='clj-long'>16</span>","value":"16"},{"type":"html","content":"<span class='clj-long'>17</span>","value":"17"},{"type":"html","content":"<span class='clj-long'>18</span>","value":"18"},{"type":"html","content":"<span class='clj-long'>19</span>","value":"19"},{"type":"html","content":"<span class='clj-long'>20</span>","value":"20"},{"type":"html","content":"<span class='clj-long'>21</span>","value":"21"},{"type":"html","content":"<span class='clj-long'>22</span>","value":"22"},{"type":"html","content":"<span class='clj-long'>23</span>","value":"23"},{"type":"html","content":"<span class='clj-long'>24</span>","value":"24"},{"type":"html","content":"<span class='clj-long'>25</span>","value":"25"},{"type":"html","content":"<span class='clj-long'>26</span>","value":"26"},{"type":"html","content":"<span class='clj-long'>27</span>","value":"27"},{"type":"html","content":"<span class='clj-long'>28</span>","value":"28"},{"type":"html","content":"<span class='clj-long'>29</span>","value":"29"},{"type":"html","content":"<span class='clj-long'>30</span>","value":"30"},{"type":"html","content":"<span class='clj-long'>31</span>","value":"31"},{"type":"html","content":"<span class='clj-long'>32</span>","value":"32"},{"type":"html","content":"<span class='clj-long'>33</span>","value":"33"},{"type":"html","content":"<span class='clj-long'>34</span>","value":"34"},{"type":"html","content":"<span class='clj-long'>35</span>","value":"35"},{"type":"html","content":"<span class='clj-long'>36</span>","value":"36"},{"type":"html","content":"<span class='clj-long'>37</span>","value":"37"},{"type":"html","content":"<span class='clj-long'>38</span>","value":"38"},{"type":"html","content":"<span class='clj-long'>39</span>","value":"39"},{"type":"html","content":"<span class='clj-long'>40</span>","value":"40"},{"type":"html","content":"<span class='clj-long'>41</span>","value":"41"},{"type":"html","content":"<span class='clj-long'>42</span>","value":"42"},{"type":"html","content":"<span class='clj-long'>43</span>","value":"43"},{"type":"html","content":"<span class='clj-long'>44</span>","value":"44"},{"type":"html","content":"<span class='clj-long'>45</span>","value":"45"},{"type":"html","content":"<span class='clj-long'>46</span>","value":"46"},{"type":"html","content":"<span class='clj-long'>47</span>","value":"47"},{"type":"html","content":"<span class='clj-long'>48</span>","value":"48"},{"type":"html","content":"<span class='clj-long'>49</span>","value":"49"},{"type":"html","content":"<span class='clj-long'>50</span>","value":"50"},{"type":"html","content":"<span class='clj-long'>51</span>","value":"51"},{"type":"html","content":"<span class='clj-long'>52</span>","value":"52"},{"type":"html","content":"<span class='clj-long'>53</span>","value":"53"},{"type":"html","content":"<span class='clj-long'>54</span>","value":"54"},{"type":"html","content":"<span class='clj-long'>55</span>","value":"55"},{"type":"html","content":"<span class='clj-long'>56</span>","value":"56"},{"type":"html","content":"<span class='clj-long'>57</span>","value":"57"},{"type":"html","content":"<span class='clj-long'>58</span>","value":"58"},{"type":"html","content":"<span class='clj-long'>59</span>","value":"59"},{"type":"html","content":"<span class='clj-long'>60</span>","value":"60"},{"type":"html","content":"<span class='clj-long'>61</span>","value":"61"},{"type":"html","content":"<span class='clj-long'>62</span>","value":"62"},{"type":"html","content":"<span class='clj-long'>63</span>","value":"63"},{"type":"html","content":"<span class='clj-long'>64</span>","value":"64"},{"type":"html","content":"<span class='clj-long'>65</span>","value":"65"},{"type":"html","content":"<span class='clj-long'>66</span>","value":"66"},{"type":"html","content":"<span class='clj-long'>67</span>","value":"67"},{"type":"html","content":"<span class='clj-long'>68</span>","value":"68"},{"type":"html","content":"<span class='clj-long'>69</span>","value":"69"},{"type":"html","content":"<span class='clj-long'>70</span>","value":"70"},{"type":"html","content":"<span class='clj-long'>71</span>","value":"71"},{"type":"html","content":"<span class='clj-long'>72</span>","value":"72"},{"type":"html","content":"<span class='clj-long'>73</span>","value":"73"},{"type":"html","content":"<span class='clj-long'>74</span>","value":"74"},{"type":"html","content":"<span class='clj-long'>75</span>","value":"75"},{"type":"html","content":"<span class='clj-long'>76</span>","value":"76"},{"type":"html","content":"<span class='clj-long'>77</span>","value":"77"},{"type":"html","content":"<span class='clj-long'>78</span>","value":"78"},{"type":"html","content":"<span class='clj-long'>79</span>","value":"79"},{"type":"html","content":"<span class='clj-long'>80</span>","value":"80"},{"type":"html","content":"<span class='clj-long'>81</span>","value":"81"},{"type":"html","content":"<span class='clj-long'>82</span>","value":"82"},{"type":"html","content":"<span class='clj-long'>83</span>","value":"83"},{"type":"html","content":"<span class='clj-long'>84</span>","value":"84"},{"type":"html","content":"<span class='clj-long'>85</span>","value":"85"},{"type":"html","content":"<span class='clj-long'>86</span>","value":"86"},{"type":"html","content":"<span class='clj-long'>87</span>","value":"87"},{"type":"html","content":"<span class='clj-long'>88</span>","value":"88"},{"type":"html","content":"<span class='clj-long'>89</span>","value":"89"},{"type":"html","content":"<span class='clj-long'>90</span>","value":"90"},{"type":"html","content":"<span class='clj-long'>91</span>","value":"91"},{"type":"html","content":"<span class='clj-long'>92</span>","value":"92"},{"type":"html","content":"<span class='clj-long'>93</span>","value":"93"},{"type":"html","content":"<span class='clj-long'>94</span>","value":"94"},{"type":"html","content":"<span class='clj-long'>95</span>","value":"95"},{"type":"html","content":"<span class='clj-long'>96</span>","value":"96"},{"type":"html","content":"<span class='clj-long'>97</span>","value":"97"},{"type":"html","content":"<span class='clj-long'>98</span>","value":"98"},{"type":"html","content":"<span class='clj-long'>99</span>","value":"99"},{"type":"html","content":"<span class='clj-long'>100</span>","value":"100"},{"type":"html","content":"<span class='clj-long'>101</span>","value":"101"},{"type":"html","content":"<span class='clj-long'>102</span>","value":"102"},{"type":"html","content":"<span class='clj-long'>103</span>","value":"103"},{"type":"html","content":"<span class='clj-long'>104</span>","value":"104"},{"type":"html","content":"<span class='clj-long'>105</span>","value":"105"},{"type":"html","content":"<span class='clj-long'>106</span>","value":"106"},{"type":"html","content":"<span class='clj-long'>107</span>","value":"107"},{"type":"html","content":"<span class='clj-long'>108</span>","value":"108"},{"type":"html","content":"<span class='clj-long'>109</span>","value":"109"},{"type":"html","content":"<span class='clj-long'>110</span>","value":"110"},{"type":"html","content":"<span class='clj-long'>111</span>","value":"111"},{"type":"html","content":"<span class='clj-long'>112</span>","value":"112"},{"type":"html","content":"<span class='clj-long'>113</span>","value":"113"},{"type":"html","content":"<span class='clj-long'>114</span>","value":"114"},{"type":"html","content":"<span class='clj-long'>115</span>","value":"115"},{"type":"html","content":"<span class='clj-long'>116</span>","value":"116"},{"type":"html","content":"<span class='clj-long'>117</span>","value":"117"},{"type":"html","content":"<span class='clj-long'>118</span>","value":"118"},{"type":"html","content":"<span class='clj-long'>119</span>","value":"119"},{"type":"html","content":"<span class='clj-long'>120</span>","value":"120"},{"type":"html","content":"<span class='clj-long'>121</span>","value":"121"},{"type":"html","content":"<span class='clj-long'>122</span>","value":"122"},{"type":"html","content":"<span class='clj-long'>123</span>","value":"123"},{"type":"html","content":"<span class='clj-long'>124</span>","value":"124"},{"type":"html","content":"<span class='clj-long'>125</span>","value":"125"},{"type":"html","content":"<span class='clj-long'>126</span>","value":"126"},{"type":"html","content":"<span class='clj-long'>127</span>","value":"127"},{"type":"html","content":"<span class='clj-long'>128</span>","value":"128"},{"type":"html","content":"<span class='clj-long'>129</span>","value":"129"},{"type":"html","content":"<span class='clj-long'>130</span>","value":"130"},{"type":"html","content":"<span class='clj-long'>131</span>","value":"131"},{"type":"html","content":"<span class='clj-long'>132</span>","value":"132"},{"type":"html","content":"<span class='clj-long'>133</span>","value":"133"},{"type":"html","content":"<span class='clj-long'>134</span>","value":"134"},{"type":"html","content":"<span class='clj-long'>135</span>","value":"135"},{"type":"html","content":"<span class='clj-long'>136</span>","value":"136"},{"type":"html","content":"<span class='clj-long'>137</span>","value":"137"},{"type":"html","content":"<span class='clj-long'>138</span>","value":"138"},{"type":"html","content":"<span class='clj-long'>139</span>","value":"139"},{"type":"html","content":"<span class='clj-long'>140</span>","value":"140"},{"type":"html","content":"<span class='clj-long'>141</span>","value":"141"},{"type":"html","content":"<span class='clj-long'>142</span>","value":"142"},{"type":"html","content":"<span class='clj-long'>143</span>","value":"143"},{"type":"html","content":"<span class='clj-long'>144</span>","value":"144"},{"type":"html","content":"<span class='clj-long'>145</span>","value":"145"},{"type":"html","content":"<span class='clj-long'>146</span>","value":"146"},{"type":"html","content":"<span class='clj-long'>147</span>","value":"147"},{"type":"html","content":"<span class='clj-long'>148</span>","value":"148"},{"type":"html","content":"<span class='clj-long'>149</span>","value":"149"},{"type":"html","content":"<span class='clj-long'>150</span>","value":"150"},{"type":"html","content":"<span class='clj-long'>151</span>","value":"151"},{"type":"html","content":"<span class='clj-long'>152</span>","value":"152"},{"type":"html","content":"<span class='clj-long'>153</span>","value":"153"},{"type":"html","content":"<span class='clj-long'>154</span>","value":"154"},{"type":"html","content":"<span class='clj-long'>155</span>","value":"155"},{"type":"html","content":"<span class='clj-long'>156</span>","value":"156"},{"type":"html","content":"<span class='clj-long'>157</span>","value":"157"},{"type":"html","content":"<span class='clj-long'>158</span>","value":"158"},{"type":"html","content":"<span class='clj-long'>159</span>","value":"159"},{"type":"html","content":"<span class='clj-long'>160</span>","value":"160"},{"type":"html","content":"<span class='clj-long'>161</span>","value":"161"},{"type":"html","content":"<span class='clj-long'>162</span>","value":"162"},{"type":"html","content":"<span class='clj-long'>163</span>","value":"163"},{"type":"html","content":"<span class='clj-long'>164</span>","value":"164"},{"type":"html","content":"<span class='clj-long'>165</span>","value":"165"},{"type":"html","content":"<span class='clj-long'>166</span>","value":"166"},{"type":"html","content":"<span class='clj-long'>167</span>","value":"167"},{"type":"html","content":"<span class='clj-long'>168</span>","value":"168"},{"type":"html","content":"<span class='clj-long'>169</span>","value":"169"},{"type":"html","content":"<span class='clj-long'>170</span>","value":"170"},{"type":"html","content":"<span class='clj-long'>171</span>","value":"171"},{"type":"html","content":"<span class='clj-long'>172</span>","value":"172"},{"type":"html","content":"<span class='clj-long'>173</span>","value":"173"},{"type":"html","content":"<span class='clj-long'>174</span>","value":"174"},{"type":"html","content":"<span class='clj-long'>175</span>","value":"175"},{"type":"html","content":"<span class='clj-long'>176</span>","value":"176"},{"type":"html","content":"<span class='clj-long'>177</span>","value":"177"},{"type":"html","content":"<span class='clj-long'>178</span>","value":"178"},{"type":"html","content":"<span class='clj-long'>179</span>","value":"179"},{"type":"html","content":"<span class='clj-long'>180</span>","value":"180"},{"type":"html","content":"<span class='clj-long'>181</span>","value":"181"},{"type":"html","content":"<span class='clj-long'>182</span>","value":"182"},{"type":"html","content":"<span class='clj-long'>183</span>","value":"183"},{"type":"html","content":"<span class='clj-long'>184</span>","value":"184"},{"type":"html","content":"<span class='clj-long'>185</span>","value":"185"},{"type":"html","content":"<span class='clj-long'>186</span>","value":"186"},{"type":"html","content":"<span class='clj-long'>187</span>","value":"187"},{"type":"html","content":"<span class='clj-long'>188</span>","value":"188"},{"type":"html","content":"<span class='clj-long'>189</span>","value":"189"},{"type":"html","content":"<span class='clj-long'>190</span>","value":"190"},{"type":"html","content":"<span class='clj-long'>191</span>","value":"191"},{"type":"html","content":"<span class='clj-long'>192</span>","value":"192"},{"type":"html","content":"<span class='clj-long'>193</span>","value":"193"},{"type":"html","content":"<span class='clj-long'>194</span>","value":"194"},{"type":"html","content":"<span class='clj-long'>195</span>","value":"195"},{"type":"html","content":"<span class='clj-long'>196</span>","value":"196"},{"type":"html","content":"<span class='clj-long'>197</span>","value":"197"},{"type":"html","content":"<span class='clj-long'>198</span>","value":"198"},{"type":"html","content":"<span class='clj-long'>199</span>","value":"199"},{"type":"html","content":"<span class='clj-long'>200</span>","value":"200"},{"type":"html","content":"<span class='clj-long'>201</span>","value":"201"},{"type":"html","content":"<span class='clj-long'>202</span>","value":"202"},{"type":"html","content":"<span class='clj-long'>203</span>","value":"203"},{"type":"html","content":"<span class='clj-long'>204</span>","value":"204"},{"type":"html","content":"<span class='clj-long'>205</span>","value":"205"},{"type":"html","content":"<span class='clj-long'>206</span>","value":"206"},{"type":"html","content":"<span class='clj-long'>207</span>","value":"207"},{"type":"html","content":"<span class='clj-long'>208</span>","value":"208"},{"type":"html","content":"<span class='clj-long'>209</span>","value":"209"},{"type":"html","content":"<span class='clj-long'>210</span>","value":"210"},{"type":"html","content":"<span class='clj-long'>211</span>","value":"211"},{"type":"html","content":"<span class='clj-long'>212</span>","value":"212"},{"type":"html","content":"<span class='clj-long'>213</span>","value":"213"},{"type":"html","content":"<span class='clj-long'>214</span>","value":"214"},{"type":"html","content":"<span class='clj-long'>215</span>","value":"215"},{"type":"html","content":"<span class='clj-long'>216</span>","value":"216"},{"type":"html","content":"<span class='clj-long'>217</span>","value":"217"},{"type":"html","content":"<span class='clj-long'>218</span>","value":"218"},{"type":"html","content":"<span class='clj-long'>219</span>","value":"219"},{"type":"html","content":"<span class='clj-long'>220</span>","value":"220"},{"type":"html","content":"<span class='clj-long'>221</span>","value":"221"},{"type":"html","content":"<span class='clj-long'>222</span>","value":"222"},{"type":"html","content":"<span class='clj-long'>223</span>","value":"223"},{"type":"html","content":"<span class='clj-long'>224</span>","value":"224"},{"type":"html","content":"<span class='clj-long'>225</span>","value":"225"},{"type":"html","content":"<span class='clj-long'>226</span>","value":"226"},{"type":"html","content":"<span class='clj-long'>227</span>","value":"227"},{"type":"html","content":"<span class='clj-long'>228</span>","value":"228"},{"type":"html","content":"<span class='clj-long'>229</span>","value":"229"},{"type":"html","content":"<span class='clj-long'>230</span>","value":"230"},{"type":"html","content":"<span class='clj-long'>231</span>","value":"231"},{"type":"html","content":"<span class='clj-long'>232</span>","value":"232"},{"type":"html","content":"<span class='clj-long'>233</span>","value":"233"},{"type":"html","content":"<span class='clj-long'>234</span>","value":"234"},{"type":"html","content":"<span class='clj-long'>235</span>","value":"235"},{"type":"html","content":"<span class='clj-long'>236</span>","value":"236"},{"type":"html","content":"<span class='clj-long'>237</span>","value":"237"},{"type":"html","content":"<span class='clj-long'>238</span>","value":"238"},{"type":"html","content":"<span class='clj-long'>239</span>","value":"239"},{"type":"html","content":"<span class='clj-long'>240</span>","value":"240"},{"type":"html","content":"<span class='clj-long'>241</span>","value":"241"},{"type":"html","content":"<span class='clj-long'>242</span>","value":"242"},{"type":"html","content":"<span class='clj-long'>243</span>","value":"243"},{"type":"html","content":"<span class='clj-long'>244</span>","value":"244"},{"type":"html","content":"<span class='clj-long'>245</span>","value":"245"},{"type":"html","content":"<span class='clj-long'>246</span>","value":"246"},{"type":"html","content":"<span class='clj-long'>247</span>","value":"247"},{"type":"html","content":"<span class='clj-long'>248</span>","value":"248"},{"type":"html","content":"<span class='clj-long'>249</span>","value":"249"},{"type":"html","content":"<span class='clj-long'>250</span>","value":"250"},{"type":"html","content":"<span class='clj-long'>251</span>","value":"251"},{"type":"html","content":"<span class='clj-long'>252</span>","value":"252"},{"type":"html","content":"<span class='clj-long'>253</span>","value":"253"},{"type":"html","content":"<span class='clj-long'>254</span>","value":"254"},{"type":"html","content":"<span class='clj-long'>255</span>","value":"255"},{"type":"html","content":"<span class='clj-long'>256</span>","value":"256"},{"type":"html","content":"<span class='clj-long'>257</span>","value":"257"},{"type":"html","content":"<span class='clj-long'>258</span>","value":"258"},{"type":"html","content":"<span class='clj-long'>259</span>","value":"259"},{"type":"html","content":"<span class='clj-long'>260</span>","value":"260"},{"type":"html","content":"<span class='clj-long'>261</span>","value":"261"},{"type":"html","content":"<span class='clj-long'>262</span>","value":"262"},{"type":"html","content":"<span class='clj-long'>263</span>","value":"263"},{"type":"html","content":"<span class='clj-long'>264</span>","value":"264"},{"type":"html","content":"<span class='clj-long'>265</span>","value":"265"},{"type":"html","content":"<span class='clj-long'>266</span>","value":"266"},{"type":"html","content":"<span class='clj-long'>267</span>","value":"267"},{"type":"html","content":"<span class='clj-long'>268</span>","value":"268"},{"type":"html","content":"<span class='clj-long'>269</span>","value":"269"},{"type":"html","content":"<span class='clj-long'>270</span>","value":"270"},{"type":"html","content":"<span class='clj-long'>271</span>","value":"271"},{"type":"html","content":"<span class='clj-long'>272</span>","value":"272"},{"type":"html","content":"<span class='clj-long'>273</span>","value":"273"},{"type":"html","content":"<span class='clj-long'>274</span>","value":"274"},{"type":"html","content":"<span class='clj-long'>275</span>","value":"275"},{"type":"html","content":"<span class='clj-long'>276</span>","value":"276"},{"type":"html","content":"<span class='clj-long'>277</span>","value":"277"},{"type":"html","content":"<span class='clj-long'>278</span>","value":"278"},{"type":"html","content":"<span class='clj-long'>279</span>","value":"279"},{"type":"html","content":"<span class='clj-long'>280</span>","value":"280"},{"type":"html","content":"<span class='clj-long'>281</span>","value":"281"},{"type":"html","content":"<span class='clj-long'>282</span>","value":"282"},{"type":"html","content":"<span class='clj-long'>283</span>","value":"283"},{"type":"html","content":"<span class='clj-long'>284</span>","value":"284"},{"type":"html","content":"<span class='clj-long'>285</span>","value":"285"},{"type":"html","content":"<span class='clj-long'>286</span>","value":"286"},{"type":"html","content":"<span class='clj-long'>287</span>","value":"287"},{"type":"html","content":"<span class='clj-long'>288</span>","value":"288"},{"type":"html","content":"<span class='clj-long'>289</span>","value":"289"},{"type":"html","content":"<span class='clj-long'>290</span>","value":"290"},{"type":"html","content":"<span class='clj-long'>291</span>","value":"291"},{"type":"html","content":"<span class='clj-long'>292</span>","value":"292"},{"type":"html","content":"<span class='clj-long'>293</span>","value":"293"},{"type":"html","content":"<span class='clj-long'>294</span>","value":"294"},{"type":"html","content":"<span class='clj-long'>295</span>","value":"295"},{"type":"html","content":"<span class='clj-long'>296</span>","value":"296"},{"type":"html","content":"<span class='clj-long'>297</span>","value":"297"},{"type":"html","content":"<span class='clj-long'>298</span>","value":"298"},{"type":"html","content":"<span class='clj-long'>299</span>","value":"299"},{"type":"html","content":"<span class='clj-long'>300</span>","value":"300"}],"value":"[1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127 128 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143 144 145 146 147 148 149 150 151 152 153 154 155 156 157 158 159 160 161 162 163 164 165 166 167 168 169 170 171 172 173 174 175 176 177 178 179 180 181 182 183 184 185 186 187 188 189 190 191 192 193 194 195 196 197 198 199 200 201 202 203 204 205 206 207 208 209 210 211 212 213 214 215 216 217 218 219 220 221 222 223 224 225 226 227 228 229 230 231 232 233 234 235 236 237 238 239 240 241 242 243 244 245 246 247 248 249 250 251 252 253 254 255 256 257 258 259 260 261 262 263 264 265 266 267 268 269 270 271 272 273 274 275 276 277 278 279 280 281 282 283 284 285 286 287 288 289 290 291 292 293 294 295 296 297 298 299 300]"}
+;;; {"type":"html","content":"<span class='clj-var'>#&#x27;pro1/cosine-dist</span>","value":"#'pro1/cosine-dist"}
+;; <=
+
+;; @@
+(defn cosine-with-abs [a b]
+  (let [z (get-observations-with-abs (index-of a members) (index-of b members))
+        x (first  z)
+        y (second z)]
+   (cosine-dist x y)))
+(defn cosine [a b]
+  (let [z (get-observations (index-of a members) (index-of b members))
+        x (first  z)
+        y (second z)]
+   (cosine-dist x y)))
+;; @@
+;; =>
+;;; {"type":"list-like","open":"","close":"","separator":"</pre><pre>","items":[{"type":"html","content":"<span class='clj-var'>#&#x27;pro1/cosine-with-abs</span>","value":"#'pro1/cosine-with-abs"},{"type":"html","content":"<span class='clj-var'>#&#x27;pro1/cosine</span>","value":"#'pro1/cosine"}],"value":"[#'pro1/cosine-with-abs,#'pro1/cosine]"}
+;; <=
+
+;; @@
+(print (cosine-with-abs "이은권" "홍문종") "\n")
+(print (cosine-with-abs "김성찬" "홍문종") "\n")
+(print (cosine-with-abs "진영" "홍문종") "\n")
+(print (cosine "이은권" "홍문종") "\n")
+;; @@
+;; ->
+;;; 0.4788986639225387 
+;;; 0.4802357439865026 
+;;; 0.4781337108513261 
+;;; 0.7997330905991579 
+;;; 
+;; <-
+;; =>
+;;; {"type":"list-like","open":"","close":"","separator":"</pre><pre>","items":[{"type":"list-like","open":"","close":"","separator":"</pre><pre>","items":[{"type":"list-like","open":"","close":"","separator":"</pre><pre>","items":[{"type":"html","content":"<span class='clj-nil'>nil</span>","value":"nil"},{"type":"html","content":"<span class='clj-nil'>nil</span>","value":"nil"}],"value":"[nil,nil]"},{"type":"html","content":"<span class='clj-nil'>nil</span>","value":"nil"}],"value":"[[nil,nil],nil]"},{"type":"html","content":"<span class='clj-nil'>nil</span>","value":"nil"}],"value":"[[[nil,nil],nil],nil]"}
+;; <=
+
+;; @@
+(defn farthest-k-with-abs [target k]
+  (let [name-dist-pairs (map vector members (map (fn [x] (cosine-with-abs target x)) members))
+        sorted-pairs    (sort-by second name-dist-pairs)
+        top-k           (take k sorted-pairs)]
+   top-k))
+(defn farthest-k [target k]
+  (let [name-dist-pairs (map vector members (map (fn [x] (cosine target x)) members))
+        sorted-pairs    (sort-by second name-dist-pairs)
+        top-k           (take k sorted-pairs)]
+   top-k))
+;; @@
+;; =>
+;;; {"type":"list-like","open":"","close":"","separator":"</pre><pre>","items":[{"type":"html","content":"<span class='clj-var'>#&#x27;pro1/farthest-k-with-abs</span>","value":"#'pro1/farthest-k-with-abs"},{"type":"html","content":"<span class='clj-var'>#&#x27;pro1/farthest-k</span>","value":"#'pro1/farthest-k"}],"value":"[#'pro1/farthest-k-with-abs,#'pro1/farthest-k]"}
+;; <=
+
+;; @@
+(print "with absent:\n")
+(print (string/join "\n"(map (fn [x] (string/join "\t\t" (list (str (first x)) (str (second x))))) (farthest-k-with-abs "홍문종" 30))))
+(print "\nwithout absent:\n")
+(print (string/join "\n" (map (fn [x] (string/join "\t\t" (list (str (first x)) (str (second x))))) (farthest-k "홍문종" 30))))
+;; @@
+;; ->
+;;; with absent:
+;;; 김용태		0.08705189317243592
+;;; 서청원		0.10689054070982773
+;;; 김종태		0.13494238979022935
+;;; 최경환(한)		0.16969895171356889
+;;; 윤영석		0.1857676384629845
+;;; 김재원		0.18672864021540103
+;;; 심기준		0.20626511035380587
+;;; 이혜훈		0.21600997032578034
+;;; 홍문표		0.22898978349138005
+;;; 김종인		0.2324732728066301
+;;; 이종걸		0.23873909203245786
+;;; 박맹우		0.24009598581635228
+;;; 배덕광		0.24156296114456877
+;;; 안철수		0.24418873859913434
+;;; 원유철		0.24988903577991206
+;;; 권은희		0.24998756132342317
+;;; 이수혁		0.26071709155585415
+;;; 한선교		0.26615175360242044
+;;; 정병국		0.2668072812331876
+;;; 여상규		0.2670247965762373
+;;; 김석기		0.2719235323622125
+;;; 김태년		0.27322586425267853
+;;; 전재수		0.2783276461632211
+;;; 이언주		0.2812610768448154
+;;; 변재일		0.28170769636732806
+;;; 정세균		0.28186135991682804
+;;; 강효상		0.28216643368629996
+;;; 윤상현		0.28356817084272073
+;;; 송기석		0.28368707584084557
+;;; 김현아		0.28455456384709077
+;;; without absent:
+;;; 김용태		0.5164854031588513
+;;; 김재원		0.5237043561299353
+;;; 강효상		0.6628761796830304
+;;; 윤영석		0.6770786198930964
+;;; 곽상도		0.6792664826745728
+;;; 이종걸		0.6844619976647217
+;;; 김종인		0.7013069356548975
+;;; 최경환(한)		0.7019223584630867
+;;; 홍익표		0.7034317065303928
+;;; 김현아		0.7037795015497751
+;;; 윤소하		0.7053839063177257
+;;; 채이배		0.7135414748299301
+;;; 김종대		0.7153542227466154
+;;; 정세균		0.7174656525042056
+;;; 윤한홍		0.723336092217193
+;;; 주호영		0.7240768675858964
+;;; 김무성		0.7247641686879914
+;;; 김태흠		0.7277819064523812
+;;; 이상돈		0.728496104244259
+;;; 박맹우		0.7298987605803101
+;;; 이언주		0.7303859314948647
+;;; 정동영		0.7325020876185768
+;;; 이용호		0.733874164259151
+;;; 이태규		0.7352425507599079
+;;; 하태경		0.7364676367751749
+;;; 서청원		0.7397319207592136
+;;; 박성중		0.7398287580118957
+;;; 송기헌		0.7406541653570685
+;;; 추혜선		0.7408238003707762
+;;; 홍영표		0.7412062544606146
+;; <-
+;; =>
+;;; {"type":"list-like","open":"","close":"","separator":"</pre><pre>","items":[{"type":"list-like","open":"","close":"","separator":"</pre><pre>","items":[{"type":"list-like","open":"","close":"","separator":"</pre><pre>","items":[{"type":"html","content":"<span class='clj-nil'>nil</span>","value":"nil"},{"type":"html","content":"<span class='clj-nil'>nil</span>","value":"nil"}],"value":"[nil,nil]"},{"type":"html","content":"<span class='clj-nil'>nil</span>","value":"nil"}],"value":"[[nil,nil],nil]"},{"type":"html","content":"<span class='clj-nil'>nil</span>","value":"nil"}],"value":"[[[nil,nil],nil],nil]"}
+;; <=
+
+;; @@
+(print "with absent:\n")
+(print (string/join "\n"(map (fn [x] (string/join "\t\t" (list (str (first x)) (str (second x))))) (farthest-k-with-abs "염동열" 30))))
+(print "\nwithout absent:\n")
+(print (string/join "\n" (map (fn [x] (string/join "\t\t" (list (str (first x)) (str (second x))))) (farthest-k "염동열" 30))))
+;; @@
+;; ->
+;;; with absent:
+;;; 김종인		0.22341433740926955
+;;; 서청원		0.24144689595433674
+;;; 김종태		0.3353338414204857
+;;; 최경환(한)		0.3461674101907095
+;;; 윤영석		0.39261186984740004
+;;; 배덕광		0.39378360973368026
+;;; 김용태		0.4085145011863606
+;;; 김재원		0.4106676310825633
+;;; 홍문종		0.4412900747301585
+;;; 이해찬		0.4562788342962867
+;;; 김현미		0.47043621920041145
+;;; 안철수		0.4718581322970182
+;;; 박맹우		0.47550547361101814
+;;; 여상규		0.4841676223580458
+;;; 도종환		0.48622117578054286
+;;; 윤한홍		0.49528318180282827
+;;; 성일종		0.5151529737079366
+;;; 문미옥		0.5155335934112766
+;;; 강효상		0.5208516947564027
+;;; 이우현		0.527282412262382
+;;; 김부겸		0.5365495704528028
+;;; 권석창		0.5386420860935489
+;;; 김영주		0.5394226405361185
+;;; 이장우		0.5444622198298358
+;;; 이혜훈		0.5453618961751451
+;;; 김석기		0.5461797723034144
+;;; 이태규		0.5507601405495097
+;;; 김태년		0.5551621857280435
+;;; 변재일		0.5558963553639934
+;;; 원유철		0.5581669652777856
+;;; without absent:
+;;; 강효상		0.7150972106532039
+;;; 박성중		0.7567519164561499
+;;; 곽상도		0.766744976343939
+;;; 곽대훈		0.7954093811857463
+;;; 윤한홍		0.7958666771501846
+;;; 김용태		0.809063026244476
+;;; 홍문종		0.8126202307087635
+;;; 문미옥		0.8251353773670228
+;;; 최명길		0.8278197078999682
+;;; 박대출		0.8345786201673691
+;;; 백승주		0.8346915977387571
+;;; 전희경		0.8362678025334183
+;;; 성일종		0.8362925180621122
+;;; 이상돈		0.8376688042255305
+;;; 김종인		0.8398629694762516
+;;; 김재원		0.8425311426992093
+;;; 주호영		0.8439285337426904
+;;; 이장우		0.8554927426588795
+;;; 이훈		0.8556711835291233
+;;; 이정미		0.8558796962234592
+;;; 이재정		0.8568106477798955
+;;; 이태규		0.8599802000074112
+;;; 조원진		0.8619440013424756
+;;; 홍익표		0.8640736355340313
+;;; 이현재		0.8668287644609473
+;;; 추경호		0.8717816291197842
+;;; 송기헌		0.87183576048849
+;;; 추혜선		0.873398490925916
+;;; 김태흠		0.8761412957470778
+;;; 최경환(한)		0.8762369318878662
+;; <-
+;; =>
+;;; {"type":"list-like","open":"","close":"","separator":"</pre><pre>","items":[{"type":"list-like","open":"","close":"","separator":"</pre><pre>","items":[{"type":"list-like","open":"","close":"","separator":"</pre><pre>","items":[{"type":"html","content":"<span class='clj-nil'>nil</span>","value":"nil"},{"type":"html","content":"<span class='clj-nil'>nil</span>","value":"nil"}],"value":"[nil,nil]"},{"type":"html","content":"<span class='clj-nil'>nil</span>","value":"nil"}],"value":"[[nil,nil],nil]"},{"type":"html","content":"<span class='clj-nil'>nil</span>","value":"nil"}],"value":"[[[nil,nil],nil],nil]"}
+;; <=
+
+;; @@
+(def key-idx (index-of "홍문종" members))
+(test (index-of "김용태" members))
+;; @@
+;; ->
+;;; 홍문종   김용태 :  74 
+;;; 
+;; <-
+;; =>
+;;; {"type":"list-like","open":"","close":"","separator":"</pre><pre>","items":[{"type":"html","content":"<span class='clj-var'>#&#x27;pro1/key-idx</span>","value":"#'pro1/key-idx"},{"type":"vega","content":{"width":400,"height":247.2187957763672,"padding":{"top":10,"left":55,"bottom":40,"right":10},"data":[{"name":"5d9459a6-dcd9-4c9e-a08b-49c34adf8f65","values":[{"x":0.0027376154538525377,"y":0},{"x":0.013813034825072752,"y":0.011},{"x":0.024888454196292965,"y":0.019},{"x":0.03596387356751318,"y":0.015},{"x":0.04703929293873339,"y":0.009},{"x":0.0581147123099536,"y":0.014},{"x":0.06919013168117381,"y":0.01},{"x":0.08026555105239402,"y":0.014},{"x":0.09134097042361423,"y":0.015},{"x":0.10241638979483444,"y":0.017},{"x":0.11349180916605466,"y":0.008},{"x":0.12456722853727487,"y":0.012},{"x":0.1356426479084951,"y":0.013},{"x":0.14671806727971531,"y":0.013},{"x":0.15779348665093554,"y":0.01},{"x":0.16886890602215576,"y":0.01},{"x":0.179944325393376,"y":0.01},{"x":0.1910197447645962,"y":0.011},{"x":0.20209516413581644,"y":0.015},{"x":0.21317058350703666,"y":0.014},{"x":0.22424600287825688,"y":0.007},{"x":0.2353214222494771,"y":0.012},{"x":0.24639684162069733,"y":0.014},{"x":0.25747226099191756,"y":0.009},{"x":0.26854768036313775,"y":0.016},{"x":0.27962309973435795,"y":0.009},{"x":0.29069851910557815,"y":0.016},{"x":0.30177393847679834,"y":0.015},{"x":0.31284935784801854,"y":0.007},{"x":0.32392477721923874,"y":0.017},{"x":0.33500019659045893,"y":0.008},{"x":0.34607561596167913,"y":0.01},{"x":0.3571510353328993,"y":0.011},{"x":0.3682264547041195,"y":0.007},{"x":0.3793018740753397,"y":0.009},{"x":0.3903772934465599,"y":0.008},{"x":0.4014527128177801,"y":0.014},{"x":0.4125281321890003,"y":0.011},{"x":0.4236035515602205,"y":0.013},{"x":0.4346789709314407,"y":0.012},{"x":0.4457543903026609,"y":0.008},{"x":0.4568298096738811,"y":0.009},{"x":0.4679052290451013,"y":0.014},{"x":0.4789806484163215,"y":0.007},{"x":0.4900560677875417,"y":0.015},{"x":0.5011314871587619,"y":0.014},{"x":0.5122069065299821,"y":0.014},{"x":0.5232823259012024,"y":0.011},{"x":0.5343577452724226,"y":0.011},{"x":0.5454331646436429,"y":0.011},{"x":0.5565085840148631,"y":0.013},{"x":0.5675840033860834,"y":0.015},{"x":0.5786594227573036,"y":0.011},{"x":0.5897348421285239,"y":0.006},{"x":0.6008102614997441,"y":0.012},{"x":0.6118856808709644,"y":0.009},{"x":0.6229611002421847,"y":0.014},{"x":0.6340365196134049,"y":0.016},{"x":0.6451119389846252,"y":0.011},{"x":0.6561873583558454,"y":0.01},{"x":0.6672627777270657,"y":0.009},{"x":0.6783381970982859,"y":0.014},{"x":0.6894136164695062,"y":0.008},{"x":0.7004890358407264,"y":0.011},{"x":0.7115644552119467,"y":0.007},{"x":0.7226398745831669,"y":0.011},{"x":0.7337152939543872,"y":0.007},{"x":0.7447907133256074,"y":0.014},{"x":0.7558661326968277,"y":0.019},{"x":0.7669415520680479,"y":0.008},{"x":0.7780169714392682,"y":0.008},{"x":0.7890923908104884,"y":0.009},{"x":0.8001678101817087,"y":0.005},{"x":0.8112432295529289,"y":0.012},{"x":0.8223186489241492,"y":0.011},{"x":0.8333940682953694,"y":0.009},{"x":0.8444694876665897,"y":0.009},{"x":0.8555449070378099,"y":0.005},{"x":0.8666203264090302,"y":0.018},{"x":0.8776957457802504,"y":0.009},{"x":0.8887711651514707,"y":0.003},{"x":0.899846584522691,"y":0.014},{"x":0.9109220038939112,"y":0.01},{"x":0.9219974232651315,"y":0.009},{"x":0.9330728426363517,"y":0.008},{"x":0.944148262007572,"y":0.007},{"x":0.9552236813787922,"y":0.009},{"x":0.9662991007500125,"y":0.011},{"x":0.9773745201212327,"y":0.007},{"x":0.988449939492453,"y":0.012},{"x":0.9995253588636732,"y":0.011},{"x":1.0106007782348934,"y":0}]}],"marks":[{"type":"line","from":{"data":"5d9459a6-dcd9-4c9e-a08b-49c34adf8f65"},"properties":{"enter":{"x":{"scale":"x","field":"data.x"},"y":{"scale":"y","field":"data.y"},"interpolate":{"value":"step-before"},"fill":{"value":"steelblue"},"fillOpacity":{"value":0.4},"stroke":{"value":"steelblue"},"strokeWidth":{"value":2},"strokeOpacity":{"value":1}}}}],"scales":[{"name":"x","type":"linear","range":"width","zero":false,"domain":{"data":"5d9459a6-dcd9-4c9e-a08b-49c34adf8f65","field":"data.x"}},{"name":"y","type":"linear","range":"height","nice":true,"zero":false,"domain":{"data":"5d9459a6-dcd9-4c9e-a08b-49c34adf8f65","field":"data.y"}}],"axes":[{"type":"x","scale":"x"},{"type":"y","scale":"y"}]},"value":"#gorilla_repl.vega.VegaView{:content {:width 400, :height 247.2188, :padding {:top 10, :left 55, :bottom 40, :right 10}, :data [{:name \"5d9459a6-dcd9-4c9e-a08b-49c34adf8f65\", :values ({:x 0.0027376154538525377, :y 0} {:x 0.013813034825072752, :y 0.011} {:x 0.024888454196292965, :y 0.019} {:x 0.03596387356751318, :y 0.015} {:x 0.04703929293873339, :y 0.009} {:x 0.0581147123099536, :y 0.014} {:x 0.06919013168117381, :y 0.01} {:x 0.08026555105239402, :y 0.014} {:x 0.09134097042361423, :y 0.015} {:x 0.10241638979483444, :y 0.017} {:x 0.11349180916605466, :y 0.008} {:x 0.12456722853727487, :y 0.012} {:x 0.1356426479084951, :y 0.013} {:x 0.14671806727971531, :y 0.013} {:x 0.15779348665093554, :y 0.01} {:x 0.16886890602215576, :y 0.01} {:x 0.179944325393376, :y 0.01} {:x 0.1910197447645962, :y 0.011} {:x 0.20209516413581644, :y 0.015} {:x 0.21317058350703666, :y 0.014} {:x 0.22424600287825688, :y 0.007} {:x 0.2353214222494771, :y 0.012} {:x 0.24639684162069733, :y 0.014} {:x 0.25747226099191756, :y 0.009} {:x 0.26854768036313775, :y 0.016} {:x 0.27962309973435795, :y 0.009} {:x 0.29069851910557815, :y 0.016} {:x 0.30177393847679834, :y 0.015} {:x 0.31284935784801854, :y 0.007} {:x 0.32392477721923874, :y 0.017} {:x 0.33500019659045893, :y 0.008} {:x 0.34607561596167913, :y 0.01} {:x 0.3571510353328993, :y 0.011} {:x 0.3682264547041195, :y 0.007} {:x 0.3793018740753397, :y 0.009} {:x 0.3903772934465599, :y 0.008} {:x 0.4014527128177801, :y 0.014} {:x 0.4125281321890003, :y 0.011} {:x 0.4236035515602205, :y 0.013} {:x 0.4346789709314407, :y 0.012} {:x 0.4457543903026609, :y 0.008} {:x 0.4568298096738811, :y 0.009} {:x 0.4679052290451013, :y 0.014} {:x 0.4789806484163215, :y 0.007} {:x 0.4900560677875417, :y 0.015} {:x 0.5011314871587619, :y 0.014} {:x 0.5122069065299821, :y 0.014} {:x 0.5232823259012024, :y 0.011} {:x 0.5343577452724226, :y 0.011} {:x 0.5454331646436429, :y 0.011} {:x 0.5565085840148631, :y 0.013} {:x 0.5675840033860834, :y 0.015} {:x 0.5786594227573036, :y 0.011} {:x 0.5897348421285239, :y 0.006} {:x 0.6008102614997441, :y 0.012} {:x 0.6118856808709644, :y 0.009} {:x 0.6229611002421847, :y 0.014} {:x 0.6340365196134049, :y 0.016} {:x 0.6451119389846252, :y 0.011} {:x 0.6561873583558454, :y 0.01} {:x 0.6672627777270657, :y 0.009} {:x 0.6783381970982859, :y 0.014} {:x 0.6894136164695062, :y 0.008} {:x 0.7004890358407264, :y 0.011} {:x 0.7115644552119467, :y 0.007} {:x 0.7226398745831669, :y 0.011} {:x 0.7337152939543872, :y 0.007} {:x 0.7447907133256074, :y 0.014} {:x 0.7558661326968277, :y 0.019} {:x 0.7669415520680479, :y 0.008} {:x 0.7780169714392682, :y 0.008} {:x 0.7890923908104884, :y 0.009} {:x 0.8001678101817087, :y 0.005} {:x 0.8112432295529289, :y 0.012} {:x 0.8223186489241492, :y 0.011} {:x 0.8333940682953694, :y 0.009} {:x 0.8444694876665897, :y 0.009} {:x 0.8555449070378099, :y 0.005} {:x 0.8666203264090302, :y 0.018} {:x 0.8776957457802504, :y 0.009} {:x 0.8887711651514707, :y 0.003} {:x 0.899846584522691, :y 0.014} {:x 0.9109220038939112, :y 0.01} {:x 0.9219974232651315, :y 0.009} {:x 0.9330728426363517, :y 0.008} {:x 0.944148262007572, :y 0.007} {:x 0.9552236813787922, :y 0.009} {:x 0.9662991007500125, :y 0.011} {:x 0.9773745201212327, :y 0.007} {:x 0.988449939492453, :y 0.012} {:x 0.9995253588636732, :y 0.011} {:x 1.0106007782348934, :y 0})}], :marks [{:type \"line\", :from {:data \"5d9459a6-dcd9-4c9e-a08b-49c34adf8f65\"}, :properties {:enter {:x {:scale \"x\", :field \"data.x\"}, :y {:scale \"y\", :field \"data.y\"}, :interpolate {:value \"step-before\"}, :fill {:value \"steelblue\"}, :fillOpacity {:value 0.4}, :stroke {:value \"steelblue\"}, :strokeWidth {:value 2}, :strokeOpacity {:value 1}}}}], :scales [{:name \"x\", :type \"linear\", :range \"width\", :zero false, :domain {:data \"5d9459a6-dcd9-4c9e-a08b-49c34adf8f65\", :field \"data.x\"}} {:name \"y\", :type \"linear\", :range \"height\", :nice true, :zero false, :domain {:data \"5d9459a6-dcd9-4c9e-a08b-49c34adf8f65\", :field \"data.y\"}}], :axes [{:type \"x\", :scale \"x\"} {:type \"y\", :scale \"y\"}]}}"}],"value":"[#'pro1/key-idx,#gorilla_repl.vega.VegaView{:content {:width 400, :height 247.2188, :padding {:top 10, :left 55, :bottom 40, :right 10}, :data [{:name \"5d9459a6-dcd9-4c9e-a08b-49c34adf8f65\", :values ({:x 0.0027376154538525377, :y 0} {:x 0.013813034825072752, :y 0.011} {:x 0.024888454196292965, :y 0.019} {:x 0.03596387356751318, :y 0.015} {:x 0.04703929293873339, :y 0.009} {:x 0.0581147123099536, :y 0.014} {:x 0.06919013168117381, :y 0.01} {:x 0.08026555105239402, :y 0.014} {:x 0.09134097042361423, :y 0.015} {:x 0.10241638979483444, :y 0.017} {:x 0.11349180916605466, :y 0.008} {:x 0.12456722853727487, :y 0.012} {:x 0.1356426479084951, :y 0.013} {:x 0.14671806727971531, :y 0.013} {:x 0.15779348665093554, :y 0.01} {:x 0.16886890602215576, :y 0.01} {:x 0.179944325393376, :y 0.01} {:x 0.1910197447645962, :y 0.011} {:x 0.20209516413581644, :y 0.015} {:x 0.21317058350703666, :y 0.014} {:x 0.22424600287825688, :y 0.007} {:x 0.2353214222494771, :y 0.012} {:x 0.24639684162069733, :y 0.014} {:x 0.25747226099191756, :y 0.009} {:x 0.26854768036313775, :y 0.016} {:x 0.27962309973435795, :y 0.009} {:x 0.29069851910557815, :y 0.016} {:x 0.30177393847679834, :y 0.015} {:x 0.31284935784801854, :y 0.007} {:x 0.32392477721923874, :y 0.017} {:x 0.33500019659045893, :y 0.008} {:x 0.34607561596167913, :y 0.01} {:x 0.3571510353328993, :y 0.011} {:x 0.3682264547041195, :y 0.007} {:x 0.3793018740753397, :y 0.009} {:x 0.3903772934465599, :y 0.008} {:x 0.4014527128177801, :y 0.014} {:x 0.4125281321890003, :y 0.011} {:x 0.4236035515602205, :y 0.013} {:x 0.4346789709314407, :y 0.012} {:x 0.4457543903026609, :y 0.008} {:x 0.4568298096738811, :y 0.009} {:x 0.4679052290451013, :y 0.014} {:x 0.4789806484163215, :y 0.007} {:x 0.4900560677875417, :y 0.015} {:x 0.5011314871587619, :y 0.014} {:x 0.5122069065299821, :y 0.014} {:x 0.5232823259012024, :y 0.011} {:x 0.5343577452724226, :y 0.011} {:x 0.5454331646436429, :y 0.011} {:x 0.5565085840148631, :y 0.013} {:x 0.5675840033860834, :y 0.015} {:x 0.5786594227573036, :y 0.011} {:x 0.5897348421285239, :y 0.006} {:x 0.6008102614997441, :y 0.012} {:x 0.6118856808709644, :y 0.009} {:x 0.6229611002421847, :y 0.014} {:x 0.6340365196134049, :y 0.016} {:x 0.6451119389846252, :y 0.011} {:x 0.6561873583558454, :y 0.01} {:x 0.6672627777270657, :y 0.009} {:x 0.6783381970982859, :y 0.014} {:x 0.6894136164695062, :y 0.008} {:x 0.7004890358407264, :y 0.011} {:x 0.7115644552119467, :y 0.007} {:x 0.7226398745831669, :y 0.011} {:x 0.7337152939543872, :y 0.007} {:x 0.7447907133256074, :y 0.014} {:x 0.7558661326968277, :y 0.019} {:x 0.7669415520680479, :y 0.008} {:x 0.7780169714392682, :y 0.008} {:x 0.7890923908104884, :y 0.009} {:x 0.8001678101817087, :y 0.005} {:x 0.8112432295529289, :y 0.012} {:x 0.8223186489241492, :y 0.011} {:x 0.8333940682953694, :y 0.009} {:x 0.8444694876665897, :y 0.009} {:x 0.8555449070378099, :y 0.005} {:x 0.8666203264090302, :y 0.018} {:x 0.8776957457802504, :y 0.009} {:x 0.8887711651514707, :y 0.003} {:x 0.899846584522691, :y 0.014} {:x 0.9109220038939112, :y 0.01} {:x 0.9219974232651315, :y 0.009} {:x 0.9330728426363517, :y 0.008} {:x 0.944148262007572, :y 0.007} {:x 0.9552236813787922, :y 0.009} {:x 0.9662991007500125, :y 0.011} {:x 0.9773745201212327, :y 0.007} {:x 0.988449939492453, :y 0.012} {:x 0.9995253588636732, :y 0.011} {:x 1.0106007782348934, :y 0})}], :marks [{:type \"line\", :from {:data \"5d9459a6-dcd9-4c9e-a08b-49c34adf8f65\"}, :properties {:enter {:x {:scale \"x\", :field \"data.x\"}, :y {:scale \"y\", :field \"data.y\"}, :interpolate {:value \"step-before\"}, :fill {:value \"steelblue\"}, :fillOpacity {:value 0.4}, :stroke {:value \"steelblue\"}, :strokeWidth {:value 2}, :strokeOpacity {:value 1}}}}], :scales [{:name \"x\", :type \"linear\", :range \"width\", :zero false, :domain {:data \"5d9459a6-dcd9-4c9e-a08b-49c34adf8f65\", :field \"data.x\"}} {:name \"y\", :type \"linear\", :range \"height\", :nice true, :zero false, :domain {:data \"5d9459a6-dcd9-4c9e-a08b-49c34adf8f65\", :field \"data.y\"}}], :axes [{:type \"x\", :scale \"x\"} {:type \"y\", :scale \"y\"}]}}]"}
 ;; <=
 
 ;; @@
