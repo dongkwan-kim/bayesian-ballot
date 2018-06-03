@@ -48,7 +48,7 @@ async def main():
     sema = asyncio.BoundedSemaphore(8)
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.181 Safari/537.36'}
     async with aiohttp.ClientSession(headers=headers) as session:
-        s = await get_list(session, sema)
+        s = sorted(await get_list(session, sema), key=lambda x:x[1])
         ret = await asyncio.gather(*[
                 asyncio.ensure_future(get_party(session, sema, x)) for x, _ in s])
     with open('party.csv', 'w') as f:
