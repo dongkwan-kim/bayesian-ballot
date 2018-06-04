@@ -228,18 +228,11 @@
 
 ;; @@
 (def probs
-  (vec (map (fn [x] (sample-mean (sample-prob x 100)))
+  (vec (map (fn [x] (sample-mean (sample-prob x 1000)))
             (range 0 (count members)))))
 ;; @@
 ;; =>
 ;;; {"type":"html","content":"<span class='clj-var'>#&#x27;PROJECT/probs</span>","value":"#'PROJECT/probs"}
-;; <=
-
-;; @@
-(empty? '())
-;; @@
-;; =>
-;;; {"type":"html","content":"<span class='clj-unkown'>true</span>","value":"true"}
 ;; <=
 
 ;; @@
@@ -251,7 +244,7 @@
            ps probs]
       (if (empty? ps)
         (do
-          (observe (normal sum 2) 141)
+          (observe (normal sum 2) 172) ; 141 for 홍문종, 172 for 염동열
           trans)
         (let [p-con (* (first ps) trans)
               is-con (if (sample (flip p-con)) 1 0)]
@@ -266,7 +259,7 @@
 (def trans-samples
   (vec
     (map :result
-       (take 2000 (take-nth 20 (drop 1000 (doquery :ipmcmc inference [probs])))))))
+       (take 1000 (take-nth 20 (drop 1000 (doquery :ipmcmc inference [probs])))))))
 ;; @@
 ;; =>
 ;;; {"type":"html","content":"<span class='clj-var'>#&#x27;PROJECT/trans-samples</span>","value":"#'PROJECT/trans-samples"}
@@ -302,7 +295,7 @@
 (reduce + 0 final-result)
 ;; @@
 ;; =>
-;;; {"type":"html","content":"<span class='clj-long'>141</span>","value":"141"}
+;;; {"type":"html","content":"<span class='clj-long'>148</span>","value":"148"}
 ;; <=
 
 ;; @@
@@ -627,6 +620,44 @@
 ;; <-
 ;; =>
 ;;; {"type":"html","content":"<span class='clj-nil'>nil</span>","value":"nil"}
+;; <=
+
+;; @@
+(cons 1 '())
+;; @@
+;; =>
+;;; {"type":"list-like","open":"<span class='clj-list'>(</span>","close":"<span class='clj-list'>)</span>","separator":" ","items":[{"type":"html","content":"<span class='clj-long'>1</span>","value":"1"}],"value":"(1)"}
+;; <=
+
+;; @@
+(def raw-attendance (slurp "bayesian-ballot/data/0521_attendance_all.txt"))
+;; @@
+;; =>
+;;; {"type":"html","content":"<span class='clj-var'>#&#x27;PROJECT/raw-attendance</span>","value":"#'PROJECT/raw-attendance"}
+;; <=
+
+;; @@
+(require '[clojure.string :as str])
+(def spt-attendance (str/split attendance #"\s+"))
+;; @@
+;; =>
+;;; {"type":"list-like","open":"","close":"","separator":"</pre><pre>","items":[{"type":"html","content":"<span class='clj-nil'>nil</span>","value":"nil"},{"type":"html","content":"<span class='clj-var'>#&#x27;PROJECT/spt-attendance</span>","value":"#'PROJECT/spt-attendance"}],"value":"[nil,#'PROJECT/spt-attendance]"}
+;; <=
+
+;; @@
+(def attendance '())
+(loop [x spt-attendance
+       i -1]
+  (if (= (count (first x)) 1)
+    (do
+      (cons '() attendance)
+      (recur [(rest x) (inc i)]))
+    (do
+      (cons (first x) (nth spt-attendance i))
+      (recur [(rest x) i]))))
+;; @@
+;; =>
+;;; {"type":"html","content":"<span class='clj-var'>#&#x27;PROJECT/attendance</span>","value":"#'PROJECT/attendance"}
 ;; <=
 
 ;; @@
